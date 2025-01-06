@@ -70,13 +70,13 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
 
     setAuthConfigEnabled(_authConfig_enabled);
     setFallbackConfigEnabled(_fallbackConfig_enabled);
-    const initfallback = { fallbackConfig_enabled: _fallbackConfig_enabled };
+    const fallbackInitValues = { fallbackConfig_enabled: _fallbackConfig_enabled };
     if (_fallbackConfig_enabled && value?.fallbackConfig?.upstreams) {
-      initfallback['fallbackConfig_upstreams'] = value?.fallbackConfig?.upstreams?.[0]?.provider;
+      fallbackInitValues['fallbackConfig_upstreams'] = value?.fallbackConfig?.upstreams?.[0]?.provider;
       try {
-        initfallback['fallbackConfig_modelNames'] = Object.keys(value?.fallbackConfig?.upstreams?.[0]?.modelMapping)[0];
+        fallbackInitValues['fallbackConfig_modelNames'] = value?.fallbackConfig?.upstreams?.[0]?.modelMapping['*'];
       } catch (err) {
-        initfallback['fallbackConfig_modelNames'] = '';
+        fallbackInitValues['fallbackConfig_modelNames'] = '';
       }
     }
     const initValues = {
@@ -85,7 +85,7 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
       upstreams,
       authConfig_enabled: _authConfig_enabled,
       authConfig_allowedConsumers: value?.authConfig?.allowedConsumers || "",
-      ...initfallback,
+      ...fallbackInitValues,
     };
 
     if (modelPredicates) {
@@ -102,8 +102,7 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
           weight: item.weight,
         };
         if (item.modelMapping) {
-          const _modelMapping = Object.keys(item.modelMapping);
-          obj["modelMapping"] = _modelMapping
+          obj["modelMapping"] = item.modelMapping["*"] || null;
         }
         return obj;
       });
@@ -149,7 +148,7 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
       const isProportion = modelService === "Proportion";
       const payload = {
         name,
-        domains: domains ? [domains] : [],
+        domains: domains && !Array.isArray(domains) ? [domains] : domains,
         fallbackConfig: {
           enabled: fallbackConfig_enabled,
         },
@@ -161,7 +160,7 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
         payload["upstreams"] = upstreams.map(({ provider, weight, modelMapping }) => {
           const obj = { provider, weight, modelMapping: {} };
           if (modelMapping) {
-            obj["modelMapping"][modelMapping] = provider;
+            obj["modelMapping"]["*"] = modelMapping;
           }
           return obj;
         });
@@ -179,7 +178,8 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
         payload['fallbackConfig']['strategy'] = "SEQ";
       }
       if (authConfig_enabled) {
-        payload['authConfig']['allowedConsumers'] = authConfig_allowedConsumers ? [authConfig_allowedConsumers] : [];
+        payload['authConfig']['allowedConsumers'] = authConfig_allowedConsumers && !Array.isArray(authConfig_allowedConsumers)
+          ? [authConfig_allowedConsumers] : authConfig_allowedConsumers;
       }
       return payload;
     },
@@ -236,10 +236,10 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
           style={{ flex: 1, marginRight: '8px' }}
           label={t("llmProvider.providerForm.label.domain")} // {/* 域名 */}
           name="domains"
-          extra={(<HistoryButton text={t("llmProvider.providerForm.creatDomain")} path={"/domain"} />)}
+          extra={(<HistoryButton text={t("llmProvider.providerForm.createDomain")} path={"/domain"} />)}
         >
           <Select allowClear placeholder={t("serviceSource.serviceSourceForm.domainRequired")}>
-            { domainsList.map((item) => (<Select.Option key={item.name} value={item.name}>{item.name}</Select.Option>))}
+            {domainsList.map((item) => (<Select.Option key={item.name} value={item.name}>{item.name}</Select.Option>))}
           </Select>
         </Form.Item>
         <RedoOutlinedBtn getList={domainsResult} />
@@ -247,7 +247,6 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
       <Form.Item
         style={{ marginBottom: 10 }}
         label={t("llmProvider.selectModelName")} // {/* 选择模型服务 */}
-        tooltip={modelService === "ModelName" ? t("llmProvider.modelNameTips") : null}
       >
         <Select
           onChange={async (e) => {
@@ -285,11 +284,15 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
                           {fields.map(({ key, name, ...restField }, index) => (
                             <tr className="ant-table-row ant-table-row-level-0" key={key}>
                               <td className="ant-table-cell">
-                                <Form.Item><Input style={{ width: 100 }} readOnly value="model" /></Form.Item>
+                                model
                               </td>
                               <td className="ant-table-cell">
-                                <Form.Item name={[name, 'matchType']} rules={[{ required: true, message: t("llmProvider.pleaseSelect") }]}>
-                                  <Select style={{ width: "200px" }} placeholder={t("llmProvider.pleaseSelect")}>
+                                <Form.Item
+                                  name={[name, 'matchType']}
+                                  noStyle
+                                  rules={[{ required: true, message: t("llmProvider.matchTypeRequired") }]}
+                                >
+                                  <Select style={{ width: "200px" }}>
                                     {[
                                       { name: "EQUAL", label: t("llmProvider.exactMatch") }, // 精确匹配
                                       { name: "PRE", label: t("llmProvider.prefixMatch") }, // 前缀匹配
@@ -302,15 +305,18 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
                                 <Form.Item
                                   {...restField}
                                   name={[name, 'matchValue']}
-                                  rules={[{ required: true, message: t("llmProvider.pleaseEnter") }]}
+                                  noStyle
+                                  rules={[{ required: true, message: t("llmProvider.matchValueRequired") }]}
                                 >
-                                  <Input.TextArea style={{ width: "200px" }} placeholder={t("llmProvider.pleaseEnter")} rows={1} />
+                                  <Input style={{ width: "200px" }} />
                                 </Form.Item>
                               </td>
-                              {fields.length > 1 ?
+                              {
+                                fields.length > 1 &&
                                 <td className="ant-table-cell">
-                                  {index ? <Form.Item><MinusCircleOutlined onClick={() => remove(name)} /></Form.Item> : null}
-                                </td> : null}
+                                  <MinusCircleOutlined onClick={() => remove(name)} />
+                                </td>
+                              }
                             </tr>
                           ))}
                         </tbody>
@@ -356,7 +362,7 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
               <Form.List name="upstreams" initialValue={[null]}>
                 {(fields, { add, remove }) => {
                   const baseStyle = { width: 190 };
-                  const requiredStyle = { display: "inline-block", marginRight: "4px", color: "#ff4d4f", fontFamily: "SimSun, sans-serif" };
+                  const requiredStyle = { display: "inline-block", marginRight: "4px", color: "#ff4d4f" };
                   return (
                     <>
                       <Space style={{ display: 'flex', color: "#808080" }} align="start">
@@ -370,6 +376,7 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
                           <Form.Item
                             {...restField}
                             name={[name, 'provider']}
+                            style={{ marginBottom: '0.5rem' }}
                             rules={[{ required: true, message: t('llmProvider.providerForm.placeholder.aiName') }]}
                           >{/* 服务名称 */}
                             <Select
@@ -377,7 +384,7 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
                               placeholder={t('llmProvider.providerForm.placeholder.aiName')}
                               onChange={text => setProviderIndex(text)}
                             >
-                              { llmList.map((item) => {
+                              {llmList.map((item) => {
                                 const selectArr = form.getFieldValue('upstreams').map(i => i && i.provider) || [];
                                 return (
                                   <Select.Option key={item.name} value={item.name} disabled={!!selectArr.includes(item.name)}>
@@ -390,6 +397,7 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
                           <Form.Item
                             {...restField}
                             name={[name, 'weight']}
+                            noStyle
                             rules={[{ required: true, message: t('llmProvider.providerForm.label.weight') }]}
                           >{/* 请求比例 */}
                             <InputNumber
@@ -401,7 +409,7 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
                             />
                           </Form.Item>
 
-                          <Form.Item {...restField} name={[name, 'modelMapping']}>{/* 模型名称 */}
+                          <Form.Item {...restField} name={[name, 'modelMapping']} noStyle>{/* 模型名称 */}
                             <AutoComplete
                               style={{ ...baseStyle }}
                               options={getOptions(index)}
@@ -410,12 +418,14 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
                                 return option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
                               }}
                               allowClear
-                              placeholder={t("llmProvider.pleaseEnter")}
                             />
                           </Form.Item>
-                          <Form.Item>
-                            {index ? <MinusCircleOutlined onClick={() => remove(name)} /> : null}
-                          </Form.Item>
+                          {
+                            fields.length > 1 &&
+                            <Form.Item noStyle>
+                              <MinusCircleOutlined onClick={() => remove(name)} />
+                            </Form.Item>
+                          }
                         </Space>
                       ))}
                       <div>
@@ -438,13 +448,14 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
             </Form.Item>
           </>
       }
+
       <Form.Item
         name="fallbackConfig_enabled"
         label={t('llmProvider.providerForm.label.fallbackConfig')} // {/* 降级服务 */}
         valuePropName="checked"
         initialValue={false}
         extra={t('llmProvider.providerForm.label.fallbackConfigExtra')}
-        style={{ marginBottom: 0 }}
+        style={fallbackConfig_enabled ? { marginBottom: 0 } : null}
       >
         <Switch onChange={e => {
           setFallbackConfigEnabled(e)
@@ -452,7 +463,6 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
         }}
         />
       </Form.Item>
-
       {fallbackConfig_enabled ?
         <>
           <div style={{ display: 'flex' }}>
@@ -464,7 +474,7 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
               rules={[{ required: true, message: t('llmProvider.providerForm.placeholder.fallbackConfigList') }]}
             >
               <Select allowClear placeholder={t('llmProvider.providerForm.placeholder.fallbackConfigList')} onChange={text => setProviderIndex(text)}>
-                { llmList.map((item) => (<Select.Option key={item.name} value={item.name}> {item.name} </Select.Option>))}
+                {llmList.map((item) => (<Select.Option key={item.name} value={item.name}> {item.name} </Select.Option>))}
               </Select>
             </Form.Item>
             <Form.Item
@@ -472,14 +482,13 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
               style={{ flex: 1 }}
               name={"fallbackConfig_modelNames"}
               label={t("llmProvider.targetModel")}
-              rules={[{ required: true, message: t('llmProvider.pleaseEnter') }]}
+              rules={[{ required: true, message: t('llmProvider.modelNamesRequired') }]}
             >{/* 模型名称 */}
               <AutoComplete
                 options={getOptionsForAi(form.getFieldValue("fallbackConfig_upstreams"))}
                 onSearch={text => setModelName(text)}
                 filterOption={(inputValue, option: any) => option.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1}
                 allowClear
-                placeholder={t("llmProvider.pleaseEnter")}
               />
             </Form.Item>
           </div>
@@ -493,7 +502,7 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
         valuePropName="checked"
         initialValue={false}
         extra={t('llmProvider.providerForm.label.authConfigExtra')}
-        style={{ marginBottom: 0 }}
+        style={authConfig_enabled ? { marginBottom: 0 } : null}
       >
         <Switch onChange={e => {
           setAuthConfigEnabled(e)
@@ -501,7 +510,6 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
         }}
         />
       </Form.Item>
-
       {authConfig_enabled ? // 允许请求本路由的消费者名称列表
         <div style={{ display: 'flex' }}>
           <Form.Item
@@ -512,8 +520,8 @@ const ConsumerForm: React.FC = forwardRef((props: { value: any }, ref) => {
             rules={[{ required: true, message: t('llmProvider.providerForm.label.authConfigList') }]}
             extra={(<HistoryButton text={t('consumer.create')} path={"/consumer"} />)}
           >
-            <Select allowClear placeholder={t('llmProvider.providerForm.label.authConfigList')}>
-              { consumerList.map((item) => (<Select.Option key={String(item.name)} value={item.name}>{item.name}</Select.Option>)) }
+            <Select allowClear mode="multiple" placeholder={t('llmProvider.providerForm.label.authConfigList')}>
+              {consumerList.map((item) => (<Select.Option key={String(item.name)} value={item.name}>{item.name}</Select.Option>))}
             </Select>
           </Form.Item>
           <RedoOutlinedBtn getList={consumerResult} />

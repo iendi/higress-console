@@ -72,7 +72,6 @@ export default {
       {
         name: 'menu.aiServiceManagement',
         icon: <RobotOutlined />,
-        hideFromMenu: true,
         children: [
           {
             name: 'menu.llmProviderManagement',
@@ -83,7 +82,9 @@ export default {
             path: '/ai/route',
           },
           {
-            path: '/ai/config',
+            name: 'menu.aiDashboard',
+            path: '/ai/dashboard',
+            visiblePredicate: (configData: any) => configData && configData['dashboard.builtin'],
           },
         ],
       },
@@ -100,7 +101,6 @@ export default {
       {
         name: 'menu.consumerManagement',
         path: '/consumer',
-        hideFromMenu: true,
         icon: <UserOutlined />,
       },
       {

@@ -1,9 +1,7 @@
-import { ServiceSourceTypes } from '@/interfaces/service-source';
-import { Form, Input, Select, Tabs, Button, Switch, InputNumber } from 'antd';
-import TextArea from 'antd/lib/input/TextArea';
+import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { Button, Form, Input, InputNumber, Select, Switch } from 'antd';
 import React, { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 
 const providerTypeDisplayName = [
   { key: 'openai', label: 'llmProvider.providerTypes.openai' },
@@ -11,14 +9,14 @@ const providerTypeDisplayName = [
   { key: 'moonshot', label: 'llmProvider.providerTypes.moonshot' },
 ];
 
-const agreementList = [
-  { label: "Openai/v1", value: "openai/v1" },
+const protocolList = [
+  { label: "openai/v1", value: "openai/v1" },
 ];
 
 const ProviderForm: React.FC = forwardRef((props: { value: any }, ref) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
-  const [enabled, setEnabled] = useState(false);
+  const [failoverEnabled, setFailoverEnabled] = useState(false);
 
   useEffect(() => {
     form.resetFields();
@@ -28,7 +26,6 @@ const ProviderForm: React.FC = forwardRef((props: { value: any }, ref) => {
         type,
         protocol,
         tokens,
-        // modelMapping = {},
         tokenFailoverConfig = {},
       } = props.value;
       const {
@@ -39,14 +36,14 @@ const ProviderForm: React.FC = forwardRef((props: { value: any }, ref) => {
         healthCheckModel,
       } = tokenFailoverConfig ?? {};
 
-      setEnabled(tokenFailoverConfig?.enabled || false);
+      const localFailoverEnabled = tokenFailoverConfig?.enabled || false;
+      setFailoverEnabled(localFailoverEnabled);
       form.setFieldsValue({
         name,
         type,
         protocol,
         tokens,
-        // modelMapping: getModelText(modelMapping),
-        enabled,
+        failoverEnabled: localFailoverEnabled,
         failureThreshold,
         successThreshold,
         healthCheckInterval,
@@ -56,7 +53,7 @@ const ProviderForm: React.FC = forwardRef((props: { value: any }, ref) => {
     }
 
     return () => {
-      setEnabled(false);
+      setFailoverEnabled(false);
     }
   }, [props.value]);
 
@@ -71,15 +68,14 @@ const ProviderForm: React.FC = forwardRef((props: { value: any }, ref) => {
         type: values.type,
         name: values.name,
         tokens: values.tokens,
-        version: 0, // 资源版本号。进行创建或强制更新操作时需设置为 0。 /  1 表示强制更新
+        version: 0, // 资源版本号。进行创建或强制更新操作时需设置为 0
         protocol: values.protocol,
-        // modelMapping: getModelMapping(values.modelMapping),
         tokenFailoverConfig: {
-          enabled: values.enabled,
+          enabled: values.failoverEnabled,
         },
       }
 
-      if (values.enabled) {
+      if (values.failoverEnabled) {
         result.tokenFailoverConfig['failureThreshold'] = values.failureThreshold;
         result.tokenFailoverConfig['successThreshold'] = values.successThreshold;
         result.tokenFailoverConfig['healthCheckInterval'] = values.healthCheckInterval;
@@ -90,31 +86,6 @@ const ProviderForm: React.FC = forwardRef((props: { value: any }, ref) => {
       return result;
     },
   }));
-
-
-  const getModelMapping = (text) => {
-    try {
-      const lines = text.split('\n');
-      const result = {};
-
-      lines.forEach(line => {
-        const [key, value] = line.split('=');
-        result[key.trim()] = value.trim();
-      });
-
-      return result;
-    } catch (err) {
-      return {}
-    }
-  };
-
-  // const getModelText = (text) => {
-  //   try {
-  //     return Object.entries(text).map(([key, value]) => `${key}=${value}`).join('\n');
-  //   } catch (err) {
-  //     return JSON.stringify(err)
-  //   }
-  // };
 
   return (
     <Form
@@ -134,6 +105,7 @@ const ProviderForm: React.FC = forwardRef((props: { value: any }, ref) => {
         ]}
       >
         <Select
+          disabled={props.value}
           placeholder={t('llmProvider.providerForm.placeholder.type')}
         >
           {
@@ -174,16 +146,15 @@ const ProviderForm: React.FC = forwardRef((props: { value: any }, ref) => {
 
       {/* 协议 */}
       <Form.Item
-        label={t('llmProvider.providerForm.label.agreement')}
+        label={t('llmProvider.providerForm.label.protocol')}
         required
         name="protocol"
-        initialValue={agreementList[0].value}
+        initialValue={protocolList[0].value}
       >
         <Select
-          allowClear
-          placeholder={t('llmProvider.providerForm.rules.agreement')}
+          placeholder={t('llmProvider.providerForm.rules.protocol')}
         >
-          {agreementList.map(item => (
+          {protocolList.map(item => (
             <Select.Option value={item.value}>
               {item.label}
             </Select.Option>
@@ -208,6 +179,7 @@ const ProviderForm: React.FC = forwardRef((props: { value: any }, ref) => {
                 label={index === 0 ? t('llmProvider.columns.tokens') : ''}
                 required={false}
                 key={field.key}
+                style={{ marginBottom: '0.5rem' }}
               >
                 <Form.Item
                   {...field}
@@ -216,14 +188,13 @@ const ProviderForm: React.FC = forwardRef((props: { value: any }, ref) => {
                     {
                       required: true,
                       whitespace: false,
-                      message: "请输入认证令牌",
+                      message: t('llmProvider.providerForm.rules.tokenRequired'),
                     },
                   ]}
                   noStyle
                 >
                   <Input
                     style={{ width: '94%' }}
-                    placeholder={t('llmProvider.providerForm.placeholder.tokens')}
                   />
                 </Form.Item>
                 {/* 删除按钮 */}
@@ -251,33 +222,19 @@ const ProviderForm: React.FC = forwardRef((props: { value: any }, ref) => {
         )}
       </Form.List>
 
-      {/* 模型映射 */}
-      {/* <Form.Item
-        name="modelMapping"
-        label="模型映射"
-      >
-        <Input.TextArea
-          placeholder={`配置请求模型与目标模型的映射关系，示例如下:
-gpt-3=qwen-turbo
-gpt-*=qwen-max
-*=qwen-long`
-          }
-          rows={4}
-        />
-      </Form.Item> */}
-
       {/* 令牌降级 */}
       <Form.Item
-        name="enabled"
+        name="failoverEnabled"
+        initialValue={false}
         label="令牌降级"
         valuePropName="checked"
         extra="启用后，若某一认证令牌返回异常响应的数量超出网值，Higress 将暂停使用该令牌发起请求，直至后续健康检测请求连续收到一定数量的正常响应。"
       >
-        <Switch onChange={e => setEnabled(e)} />
+        <Switch onChange={e => setFailoverEnabled(e)} />
       </Form.Item>
 
       {
-        enabled ?
+        failoverEnabled ?
           <>
             {/* 令牌不可用时需满足的最小连续请求失败次数 */}
             <Form.Item
@@ -340,7 +297,6 @@ gpt-*=qwen-max
           </>
           : null
       }
-
     </Form>
   );
 });

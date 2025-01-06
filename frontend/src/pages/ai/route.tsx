@@ -3,11 +3,12 @@ import { addAiRoute, deleteAiRoute, getAiRoutes, updateAiRoute } from '@/service
 import { ArrowRightOutlined, ExclamationCircleOutlined, RedoOutlined } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-layout';
 import { useRequest } from 'ahooks';
-import { Button, Col, Drawer, Form, Modal, Row, Space, Table } from 'antd';
+import { Button, Col, Drawer, Form, Modal, Row, Space, Table, Typography } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import RouteForm from './components/RouteForm';
 import { HistoryButton } from './components/RouteForm/Components';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 
 interface FormRef {
   reset: () => void;
@@ -63,10 +64,11 @@ const AiRouteList: React.FC = () => {
     },
     {
       title: t('aiRoute.columns.auth'),
-      dataIndex: 'consumers',
-      key: 'consumers',
+      dataIndex: ['authConfig', 'allowedConsumers'],
+      key: 'authConfig.allowedConsumers',
       render: (value, record) => {
-        if (!record.authEnabled) {
+        const { authConfig } = record;
+        if (!authConfig || !authConfig.enabled) {
           return t('aiRoute.authNotEnabled')
         }
         if (!Array.isArray(value) || !value.length) {
@@ -83,7 +85,7 @@ const AiRouteList: React.FC = () => {
       align: 'center',
       render: (_, record) => (
         <Space size="small">
-          <a onClick={() => onUse(record)}>{t('llmProvider.providerForm.howtouse')}</a>
+          <a onClick={() => onUsageDrawer(record)}>{t('llmProvider.providerForm.howToUse')}</a>
           <HistoryButton text={t('misc.strategy')} path={`/ai/config?name=${record.name}`} />
           <a onClick={() => onEditDrawer(record)}>{t('misc.edit')}</a>
           <a onClick={() => onShowModal(record)}>{t('misc.delete')}</a>
@@ -100,7 +102,8 @@ const AiRouteList: React.FC = () => {
   const [loadingapi, setLoading] = useState(false);
   const [openModal, setOpenModal] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const [useDrawer, setUseDrawer] = useState(false)
+  const [usageDrawer, setUsageDrawer] = useState(false)
+  const [usageCommand, setUsageCommand] = useState('')
 
   const { loading, run, refresh } = useRequest(getAiRoutes, {
     manual: true,
@@ -117,14 +120,36 @@ const AiRouteList: React.FC = () => {
     run();
   }, []);
 
-  const onUse = (aiRoute: AiRoute) => {
-    setCurrentAiRoute(aiRoute);
-    setUseDrawer(true);
+  const buildUsageCommand = (aiRoute: AiRoute): string => {
+    let command = `curl -sv http://<higress-gateway-ip>/v1/chat/completions \\
+    -X POST \\
+    -H 'Content-Type: application/json'`;
+    if (aiRoute.domains && aiRoute.domains.length) {
+      command += ` \\
+    -H 'Host: ${aiRoute.domains[0]}'`;
+    }
+    command += ` \\
+    -d \\
+'{
+  "model": "<model-name>",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello!"
+    }
+  ]
+}'`;
+    return command;
   };
 
-  const closeUse = () => {
-    setCurrentAiRoute(null);
-    setUseDrawer(false);
+  const onUsageDrawer = (aiRoute: AiRoute) => {
+    setUsageCommand(buildUsageCommand(aiRoute));
+    setUsageDrawer(true);
+  };
+
+  const closeUsage = () => {
+    setUsageCommand(null);
+    setUsageDrawer(false);
   }
 
   const onEditDrawer = (aiRoute: AiRoute) => {
@@ -139,23 +164,25 @@ const AiRouteList: React.FC = () => {
 
   const handleDrawerOK = async () => {
     setLoading(true);
-    const values = formRef.current ? await formRef.current.handleSubmit() : {};
-    if (!values) {
+    try {
+      const values = formRef.current ? await formRef.current.handleSubmit() : {};
+      if (!values) {
+        return false;
+      }
+
+      if (currentAiRoute) {
+        const params: AiRoute = { version: currentAiRoute.version, ...values };
+        await updateAiRoute(params);
+      } else {
+        await addAiRoute(values as AiRoute);
+      }
+
+      setOpenDrawer(false);
+      formRef.current && formRef.current.reset();
+      refresh();
+    } finally {
       setLoading(false);
-      return false;
     }
-
-    if (currentAiRoute) {
-      const params: AiRoute = { version: currentAiRoute.version, ...values };
-      await updateAiRoute(params);
-    } else {
-      await addAiRoute(values as AiRoute);
-    }
-
-    setLoading(false);
-    setOpenDrawer(false);
-    formRef.current && formRef.current.reset();
-    refresh();
   };
 
   const handleDrawerCancel = () => {
@@ -246,12 +273,20 @@ const AiRouteList: React.FC = () => {
         <RouteForm ref={formRef} value={currentAiRoute} />
       </Drawer>
       <Modal
-        title={t("llmProvider.providerForm.AirouterUse")}
-        open={useDrawer}
-        onOk={closeUse}
-        onCancel={closeUse}
+        title={t("llmProvider.providerForm.aiRouteUsage")}
+        open={usageDrawer}
+        onOk={closeUsage}
+        onCancel={closeUsage}
+        footer={[
+          <Button key="submit" type="primary" onClick={closeUsage}>
+            OK
+          </Button>,
+        ]}
       >
-        TBD
+        {t("llmProvider.providerForm.aiRouteUsageText")}
+        <SyntaxHighlighter language="shell">
+          {usageCommand}
+        </SyntaxHighlighter>
       </Modal>
       <Modal
         title={<div><ExclamationCircleOutlined style={{ color: '#ffde5c', marginRight: 8 }} />{t('misc.delete')}</div>}

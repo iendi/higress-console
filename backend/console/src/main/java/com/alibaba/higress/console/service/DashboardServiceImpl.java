@@ -61,8 +61,8 @@ import com.alibaba.higress.console.client.grafana.models.GrafanaSearchResult;
 import com.alibaba.higress.console.client.grafana.models.SearchType;
 import com.alibaba.higress.console.constant.SystemConfigKey;
 import com.alibaba.higress.console.constant.UserConfigKey;
-import com.alibaba.higress.console.controller.dto.DashboardInfo;
-import com.alibaba.higress.console.controller.dto.DashboardType;
+import com.alibaba.higress.console.model.DashboardInfo;
+import com.alibaba.higress.console.model.DashboardType;
 import com.alibaba.higress.sdk.exception.BusinessException;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -173,6 +173,10 @@ public class DashboardServiceImpl implements DashboardService {
             grafanaClient = new GrafanaClient(apiBaseUrl, username, password);
             EXECUTOR.submit(new DashboardInitializer(overwriteWhenStartUp));
         }
+    }
+
+    public boolean isBuiltIn() {
+        return StringUtils.isNoneBlank(apiBaseUrl, promDatasourceUrl, lokiDatasourceUrl);
     }
 
     @Override
@@ -375,10 +379,6 @@ public class DashboardServiceImpl implements DashboardService {
         DashboardConfiguration configuration = dashboardConfigurations.get(type);
         String url = configService.getString(configuration.getConfigKey());
         return new DashboardInfo(false, null, url);
-    }
-
-    private boolean isBuiltIn() {
-        return StringUtils.isNoneBlank(apiBaseUrl, promDatasourceUrl, lokiDatasourceUrl);
     }
 
     private String buildConfigData(String dashboardConfiguration, String datasourceUid) {
